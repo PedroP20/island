@@ -38,18 +38,19 @@ _ = Task.Run(async () =>
             if (a.Length >= 4) _ = Task.Run(() => DownloadTotal(a[1], a[2], a[3].Split('|')));
             continue;
         }
+        // comandos de mídia: "<ação>\t<id da sessão>[\t<segundos>]" (sem id = sessão atual do Windows)
         try
         {
-            var s = mgr.GetCurrentSession();
+            var parts = line.Trim().Split('\t');
+            var s = parts.Length > 1 && parts[1] != "" ? FindSession(parts[1]) : mgr.GetCurrentSession();
             if (s == null) continue;
-            var parts = line.Trim().Split(' ');
             switch (parts[0])
             {
                 case "toggle": await s.TryTogglePlayPauseAsync(); break;
                 case "next": await s.TrySkipNextAsync(); break;
                 case "prev": await s.TrySkipPreviousAsync(); break;
                 case "seek":
-                    if (parts.Length > 1 && double.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var sec))
+                    if (parts.Length > 2 && double.TryParse(parts[2], System.Globalization.CultureInfo.InvariantCulture, out var sec))
                         await s.TryChangePlaybackPositionAsync(TimeSpan.FromSeconds(sec).Ticks);
                     break;
             }
@@ -241,60 +242,81 @@ _ = Task.Run(async () =>
     }
 });
 
-// ---------- mídia (1x por segundo) ----------
-string lastKey = "", prev = "";
-bool haveArt = false; int tries = 0;
+// ---------- mídia: TODAS as sessões (Spotify, navegador, vídeos...), 1x por segundo ----------
+// Cada sessão ganha um id estável (app + nº de ordem). A capa vai em mensagem separada, só quando muda.
+var artState = new Dictionary<string, (string key, bool have, int tries)>();
+string prevList = "";
+string SessionId(GlobalSystemMediaTransportControlsSession s, Dictionary<string, int> seen)
+{
+    var app = s.SourceAppUserModelId ?? "app";
+    seen[app] = seen.TryGetValue(app, out var n) ? n + 1 : 0;
+    return seen[app] == 0 ? app : $"{app}#{seen[app]}";
+}
+GlobalSystemMediaTransportControlsSession FindSession(string id)
+{
+    var seen = new Dictionary<string, int>();
+    foreach (var s in mgr.GetSessions()) if (SessionId(s, seen) == id) return s;
+    return null;
+}
 while (true)
 {
-    var o = new Dictionary<string, object> { ["active"] = false };
-    string artOut = null;
+    var list = new List<Dictionary<string, object>>();
     try
     {
-        var s = mgr.GetCurrentSession();
-        if (s != null)
+        var seen = new Dictionary<string, int>();
+        var cur = mgr.GetCurrentSession();
+        foreach (var s in mgr.GetSessions())
         {
-            var p = await s.TryGetMediaPropertiesAsync();
-            var pb = s.GetPlaybackInfo();
-            var tl = s.GetTimelineProperties();
-            var key = $"{p.Title}|{p.Artist}";
-            if (key != lastKey && !string.IsNullOrEmpty(p.Title)) { lastKey = key; artOut = ""; haveArt = false; tries = 0; }
-            if (!haveArt && tries < 20 && p.Thumbnail != null)
+            var id = SessionId(s, seen);
+            try
             {
-                tries++;
-                try
+                var p = await s.TryGetMediaPropertiesAsync();
+                if (string.IsNullOrEmpty(p.Title)) continue;
+                var pb = s.GetPlaybackInfo();
+                var tl = s.GetTimelineProperties();
+                var key = $"{p.Title}|{p.Artist}";
+                var a = artState.TryGetValue(id, out var st0) ? st0 : (key: "", have: false, tries: 0);
+                if (a.key != key) { a = (key: key, have: false, tries: 0); Emit(new() { ["t"] = "art", ["id"] = id, ["art"] = "" }); }
+                // o Spotify publica a capa alguns instantes depois do título: tenta várias vezes
+                if (!a.have && a.tries < 20 && p.Thumbnail != null)
                 {
-                    using var st = await p.Thumbnail.OpenReadAsync();
-                    using var ms = new MemoryStream();
-                    await st.AsStreamForRead().CopyToAsync(ms);
-                    if (ms.Length > 100)
+                    a.tries++;
+                    try
                     {
-                        var type = string.IsNullOrEmpty(st.ContentType) ? "image/jpeg" : st.ContentType;
-                        artOut = $"data:{type};base64,{Convert.ToBase64String(ms.ToArray())}";
-                        haveArt = true;
+                        using var st = await p.Thumbnail.OpenReadAsync();
+                        using var ms = new MemoryStream();
+                        await st.AsStreamForRead().CopyToAsync(ms);
+                        if (ms.Length > 100)
+                        {
+                            var type = string.IsNullOrEmpty(st.ContentType) ? "image/jpeg" : st.ContentType;
+                            Emit(new() { ["t"] = "art", ["id"] = id, ["art"] = $"data:{type};base64,{Convert.ToBase64String(ms.ToArray())}" });
+                            a.have = true;
+                        }
                     }
+                    catch { }
                 }
-                catch { }
+                artState[id] = a;
+                list.Add(new Dictionary<string, object>
+                {
+                    ["id"] = id, ["app"] = s.SourceAppUserModelId,
+                    ["title"] = p.Title, ["artist"] = p.Artist,
+                    ["playing"] = pb.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing,
+                    ["canSeek"] = pb.Controls.IsPlaybackPositionEnabled,
+                    ["position"] = Math.Round(tl.Position.TotalSeconds, 1),
+                    ["duration"] = Math.Round(tl.EndTime.TotalSeconds, 1),
+                    ["updated"] = tl.LastUpdatedTime.ToUnixTimeMilliseconds(),
+                    ["current"] = cur != null && s.SourceAppUserModelId == cur.SourceAppUserModelId,
+                });
             }
-            o = new Dictionary<string, object>
-            {
-                ["active"] = !string.IsNullOrEmpty(p.Title),
-                ["title"] = p.Title, ["artist"] = p.Artist, ["app"] = s.SourceAppUserModelId,
-                ["playing"] = pb.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing,
-                ["canSeek"] = pb.Controls.IsPlaybackPositionEnabled,
-                ["position"] = Math.Round(tl.Position.TotalSeconds, 1),
-                ["duration"] = Math.Round(tl.EndTime.TotalSeconds, 1),
-                ["updated"] = tl.LastUpdatedTime.ToUnixTimeMilliseconds(),
-            };
+            catch { }
         }
+        // esquece capas de sessões que fecharam
+        foreach (var gone in artState.Keys.Where((k) => !list.Any((x) => (string)x["id"] == k)).ToList()) artState.Remove(gone);
     }
     catch { }
-    var json = JsonSerializer.Serialize(o);
-    if (json != prev || artOut != null)
-    {
-        prev = json;
-        if (artOut != null) o["art"] = artOut;
-        Emit(o);
-    }
+    var msg = new Dictionary<string, object> { ["t"] = "sessions", ["list"] = list };
+    var json = JsonSerializer.Serialize(msg);
+    if (json != prevList) { prevList = json; Emit(msg); }
     await Task.Delay(1000);
 }
 

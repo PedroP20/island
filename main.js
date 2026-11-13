@@ -224,7 +224,9 @@ setInterval(() => {
 app.on('browser-window-created', (_e, w) =>
   w.webContents.on('console-message', (_ev, _l, msg) => console.log('[renderer]', msg)));
 ipcMain.on('media-cmd', (_e, action) => {
-  if (mediaProc && (['toggle', 'next', 'prev'].includes(action) || /^seek \d+(\.\d+)?$/.test(action))) mediaProc.stdin.write(action + '\n');
+  // "<ação>\t<id da sessão>" ou "seek\t<id>\t<segundos>"
+  const ok = /^(toggle|next|prev)\t[^\t\r\n]*$/.test(action) || /^seek\t[^\t\r\n]*\t\d+(\.\d+)?$/.test(action);
+  if (mediaProc && ok) mediaProc.stdin.write(action + '\n');
 });
 ipcMain.on('menu', () => buildMenu().popup({ window: win }));
 
