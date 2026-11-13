@@ -376,44 +376,121 @@ ipcMain.on('clip-to-shelf', (_e, id) => {
   }
 });
 
-// ---------- Downloads: observa a pasta (sem ficar varrendo quando nada está baixando) ----------
-const DL_EXT = /\.(crdownload|part|partial|download)$/i;
-const UNCONFIRMED = /^(Unconfirmed|Não confirmado) \d+$/i; // nome provisório do Chrome
-let dlActive = new Map(), dlTimer = null, dlScanT = null;
+// ---------- Downloads: observa as pastas de download (sem varrer nada enquanto não há download) ----------
+// Descobre sozinho a pasta de cada navegador (Brave, Chrome, Edge, Opera, Vivaldi, Firefox) + a do Windows.
+const DL_EXT = /\.(crdownload|part|partial|download|opdownload)$/i;
+const UNCONFIRMED = /^(Unconfirmed|Não confirmado) \d+$/i; // nome provisório do Chrome/Brave/Edge
+let dlActive = new Map(), dlTimer = null, dlScanT = null, dlDirs = [];
+const dlPending = new Map();   // temporário visto -> quando (pega downloads que terminam rápido demais)
+const dlAnnounced = new Set();
+
+function browserDownloadDirs() {
+  const dirs = new Set([app.getPath('downloads')]);
+  const local = process.env.LOCALAPPDATA || '', roaming = process.env.APPDATA || '';
+  const chromium = [
+    path.join(local, 'BraveSoftware', 'Brave-Browser', 'User Data'),
+    path.join(local, 'Google', 'Chrome', 'User Data'),
+    path.join(local, 'Microsoft', 'Edge', 'User Data'),
+    path.join(local, 'Vivaldi', 'User Data'),
+    path.join(roaming, 'Opera Software', 'Opera Stable'),
+    path.join(roaming, 'Opera Software', 'Opera GX Stable'),
+  ];
+  for (const base of chromium) {
+    let profiles = [];
+    try { profiles = fs.readdirSync(base).filter((n) => n === 'Default' || /^Profile \d+$/.test(n)).map((n) => path.join(base, n)); } catch {}
+    profiles.push(base); // Opera guarda as preferências direto na pasta
+    for (const p of profiles) {
+      try {
+        const j = JSON.parse(fs.readFileSync(path.join(p, 'Preferences'), 'utf8'));
+        const d = j?.download?.default_directory;
+        if (d) dirs.add(d);
+      } catch {}
+    }
+  }
+  // Firefox: browser.download.dir no prefs.js de cada perfil
+  try {
+    const ff = path.join(roaming, 'Mozilla', 'Firefox', 'Profiles');
+    for (const prof of fs.readdirSync(ff)) {
+      try {
+        const txt = fs.readFileSync(path.join(ff, prof, 'prefs.js'), 'utf8');
+        const m = txt.match(/user_pref\("browser\.download\.dir",\s*"(.+?)"\);/);
+        if (m) dirs.add(JSON.parse(`"${m[1]}"`));
+      } catch {}
+    }
+  } catch {}
+  return [...dirs].filter((d) => { try { return fs.statSync(d).isDirectory(); } catch { return false; } });
+}
+
+function announceDone(final) {
+  if (process.env.ISLAND_DEBUG) console.log('[dl] concluido:', final);
+  if (dlAnnounced.has(final)) return;
+  dlAnnounced.add(final); setTimeout(() => dlAnnounced.delete(final), 60e3);
+  win?.webContents.send('download', { done: { name: path.basename(final), path: final } });
+}
+
 function dlScan() {
-  const dir = app.getPath('downloads');
-  let names = [];
-  try { names = fs.readdirSync(dir); } catch { return; }
   const now = Date.now(), active = new Map();
-  for (const n of names) {
-    if (!DL_EXT.test(n)) continue;
-    let size = 0, mtime = 0;
-    try { const st = fs.statSync(path.join(dir, n)); size = st.size; mtime = st.mtimeMs; } catch {}
-    // temporário parado há mais de 2 min = download abandonado: ignora
-    if (now - mtime > 120e3) continue;
-    const prev = dlActive.get(n);
-    const speed = prev ? Math.max(0, (size - prev.size) / ((now - prev.t) / 1000)) : 0;
-    active.set(n, { size, t: now, speed: prev && now - prev.t < 400 ? prev.speed : speed });
+  for (const dir of dlDirs) {
+    let names = [];
+    try { names = fs.readdirSync(dir); } catch { continue; }
+    for (const n of names) {
+      if (!DL_EXT.test(n)) continue;
+      const full = path.join(dir, n);
+      let size = 0, mtime = 0;
+      try { const st = fs.statSync(full); size = st.size; mtime = st.mtimeMs; } catch {}
+      if (now - mtime > 120e3) continue; // parado há mais de 2 min = download abandonado
+      const prev = dlActive.get(full);
+      const speed = prev ? Math.max(0, (size - prev.size) / ((now - prev.t) / 1000)) : 0;
+      active.set(full, { size, t: now, speed: prev && now - prev.t < 400 ? prev.speed : speed, name: n });
+      dlPending.set(full, now);
+    }
   }
   // terminou: o temporário sumiu e o arquivo final existe
-  for (const [n] of dlActive) {
-    if (active.has(n)) continue;
-    const final = path.join(dir, n.replace(DL_EXT, ''));
-    if (!UNCONFIRMED.test(path.basename(final)) && fs.existsSync(final))
-      win?.webContents.send('download', { done: { name: path.basename(final), path: final } });
+  for (const [full, when] of dlPending) {
+    if (active.has(full)) continue;
+    dlPending.delete(full);
+    if (now - when > 5 * 60e3) continue;
+    const final = full.replace(DL_EXT, '');
+    if (!UNCONFIRMED.test(path.basename(final)) && fs.existsSync(final)) announceDone(final);
+    else {
+      // Chrome/Brave às vezes renomeia "Não confirmado 123.crdownload" direto para o nome final:
+      // procura um arquivo novo (últimos 10 s) na mesma pasta
+      try {
+        const dir = path.dirname(full);
+        const fresh = fs.readdirSync(dir).map((n) => path.join(dir, n))
+          .filter((f) => !DL_EXT.test(f) && now - fs.statSync(f).mtimeMs < 10e3 && fs.statSync(f).isFile())
+          .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0];
+        if (fresh) announceDone(fresh);
+      } catch {}
+    }
   }
   dlActive = active;
-  win?.webContents.send('download', { active: [...active].map(([n, v]) => ({
-    name: n.replace(DL_EXT, '').replace(UNCONFIRMED, 'Download'), size: v.size, speed: v.speed })) });
-  // enquanto houver download, atualiza 1x/s; quando acabar, para
+  if (process.env.ISLAND_DEBUG && active.size) console.log('[dl] baixando:', [...active.values()].map((v) => v.name + ' ' + v.size));
+  win?.webContents.send('download', { active: [...active.values()].map((v) => ({
+    name: v.name.replace(DL_EXT, '').replace(UNCONFIRMED, 'Download'), size: v.size, speed: v.speed })) });
   if (active.size && !dlTimer) dlTimer = setInterval(dlScan, 1000);
   if (!active.size && dlTimer) { clearInterval(dlTimer); dlTimer = null; }
 }
+
+const dlWatchers = [];
 function watchDownloads() {
-  try {
-    fs.watch(app.getPath('downloads'), () => { clearTimeout(dlScanT); dlScanT = setTimeout(dlScan, 300); });
-  } catch {}
+  dlWatchers.splice(0).forEach((w) => { try { w.close(); } catch {} });
+  dlDirs = browserDownloadDirs();
+  for (const dir of dlDirs) {
+    try {
+      dlWatchers.push(fs.watch(dir, (_ev, name) => {
+        // anota o temporário na hora: downloads que terminam em < 300 ms também são pegos
+        if (name && DL_EXT.test(name)) dlPending.set(path.join(dir, name), Date.now());
+        clearTimeout(dlScanT); dlScanT = setTimeout(dlScan, 250);
+      }));
+    } catch {}
+  }
 }
+// se você mudar a pasta de download de algum navegador, a ilha percebe (checa a cada 10 min)
+setInterval(() => {
+  const now = browserDownloadDirs();
+  if (now.join('|') !== dlDirs.join('|')) watchDownloads();
+}, 10 * 60e3);
 ipcMain.on('dl-show', (_e, p) => shell.showItemInFolder(p));
 ipcMain.on('dl-to-shelf', (_e, p) => ipcMain.emit('shelf-add', null, [p]));
 
