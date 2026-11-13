@@ -27,6 +27,9 @@ Funciona com Spotify, YouTube, navegador e qualquer app que use os controles de 
 - **Fundo desfocado** na cor da capa.
 - Se o app não fornecer a capa, a ilha busca no catálogo do iTunes.
 - Opcional: abrir sozinha ao trocar de música (vem desligado).
+- **Várias mídias ao mesmo tempo:** se você está ouvindo música e abre um vídeo, a música **continua** na ilha. O vídeo vira um selo **"+1"**.
+  - Na página de música, o botão com as capas empilhadas abre a lista **"Tocando agora"**.
+  - Na lista dá para trocar o que aparece na ilha ou pausar cada mídia.
 
 ### 🕐 Relógio e clima
 - Com nada rodando, a ilha fechada mostra **só a hora**.
@@ -34,6 +37,9 @@ Funciona com Spotify, YouTube, navegador e qualquer app que use os controles de 
 - **Clima atual:** ícone, temperatura, descrição, máxima e mínima.
 - **Previsão das próximas 6 horas.**
 - Cidade automática pelo IP, ou escolhida manualmente nos Ajustes. Dados do [Open-Meteo](https://open-meteo.com), sem cadastro.
+
+### ⏳ Contagem regressiva (temporária)
+Dias, horas, minutos e segundos até o lançamento do **GTA VI** (19/11, 00:00). A aba some sozinha depois.
 
 ### ⏱️ Timer e 🌙 Foco
 - **Timer:** atalhos de 1 a 60 minutos ou tempo personalizado, com botões +1 e +5 min. No fim toca um som e a ilha pisca.
@@ -61,7 +67,21 @@ Notificações do WhatsApp, Discord, e-mail etc. aparecem na ilha por alguns seg
 Um pontinho **laranja** (microfone) ou **verde** (câmera) aparece enquanto algum app usa. Passe o mouse para ver qual app.
 
 ### ⬇️ Downloads
-Mostra o tamanho baixado enquanto o download acontece (Chrome, Edge, Firefox, Brave...). No fim, aparecem os botões **Mostrar** e **Guardar** (na prateleira). Downloads abandonados são ignorados.
+- **Anel de progresso com porcentagem** no ícone enquanto baixa.
+  - O tamanho total vem do histórico do navegador (Chrome, Brave, Edge, Opera, Vivaldi).
+  - No Firefox, mostra os MB baixados.
+- **Encontra sozinha a pasta de download de cada navegador**, mesmo que você tenha mudado para outro disco.
+- **Aba Downloads** dentro da Prateleira:
+  - os últimos 15 downloads, com miniatura;
+  - arraste para qualquer lugar, duplo clique para abrir, 📁 para mostrar na pasta.
+- No fim de cada download, aparecem os botões **Mostrar** e **Guardar**. Downloads abandonados são ignorados.
+
+### 🎮 Modo jogo
+- Para ativar: clique no **controle** no canto inferior direito da ilha aberta, ou use o menu da bandeja.
+- A ilha **fecha de verdade** e vai para a bandeja (ícone com ponto roxo).
+  - Para tudo: leitura de mídia, notificações e checagem do mouse.
+  - Uso cai para **0% de CPU**.
+- Para voltar: clique no ícone da bandeja, ou use o menu → **Desativar modo jogo**.
 
 ### 🔋 Bateria
 Avisa quando o carregador é conectado ou removido, e quando a bateria chega a 20% ou 10%.
@@ -77,7 +97,7 @@ Avisa quando o carregador é conectado ou removido, e quando a bateria chega a 2
   - Mostra os pontinhos de microfone e câmera.
   - Clicar num ícone abre a página dele.
 - **3 temas:** Preta (padrão), Branca e Grafite.
-- **5 páginas:** Música · Relógio · Timer/Foco · Prateleira/Copiados · Ajustes.
+- **Páginas:** Música · Relógio · Contagem · Timer/Foco · Prateleira (Arquivos/Copiados/Downloads) · Ajustes.
   - Para navegar: barra de abas com ícones, rodinha do mouse ou setas ← →.
 - **Posição livre:** segure e arraste a ilha até qualquer borda (topo, base, esquerda ou direita) e em qualquer monitor.
   - Nas laterais ela fica em pé.
@@ -91,10 +111,13 @@ Avisa quando o carregador é conectado ou removido, e quando a bateria chega a 2
 
 ## ⚡ Desempenho
 
+- **Modo jogo:** 0% de CPU com um clique.
 - **Some em tela cheia:** em jogos (incluindo tela cheia exclusiva), vídeos e apresentações, a ilha sai de cima da tela de verdade. Não fica nem transparente por cima, para não causar travamentos.
 - **Tudo por evento:** volume, brilho e área de transferência só avisam quando algo muda.
   - A pasta de Downloads só é verificada enquanto há download acontecendo.
   - A letra da música só é atualizada com a página de música aberta.
+  - Músicas e vídeos são lidos **por evento**: o Windows avisa quando algo muda, sem consultar a cada segundo.
+  - O mouse é checado rápido só quando o cursor está perto da ilha.
 - **Desativada pela bandeja:** gasta praticamente zero.
 
 ---

@@ -19,7 +19,7 @@ if (!app.requestSingleInstanceLock()) app.quit();
 
 // ---------- Posição (borda + ponto ao longo da borda), salva entre sessões ----------
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
-let settings = { edge: 'top', pos: 0.5, displayId: null, enabled: true };
+let settings = { edge: 'top', pos: 0.5, displayId: null, enabled: true, gameMode: false };
 try { Object.assign(settings, JSON.parse(fs.readFileSync(settingsFile(), 'utf8'))); } catch {}
 const saveSettings = () => { try { fs.writeFileSync(settingsFile(), JSON.stringify(settings)); } catch {} };
 const isVertical = () => settings.edge === 'left' || settings.edge === 'right';
@@ -57,6 +57,7 @@ function animateTo(from, to) {
 }
 
 function applyLayout(from) {
+  if (!win || win.isDestroyed()) return;
   const to = targetBounds();
   win.webContents.send('layout', { edge: settings.edge, w: to.width, h: to.height });
   if (from) animateTo(from, to); else win.setBounds(to);
@@ -103,7 +104,7 @@ ipcMain.on('drag-end', () => {
 
 // ---------- Mídia + detector de tela cheia ----------
 function startMedia() {
-  if (mediaProc || !settings.enabled) return;
+  if (mediaProc || !settings.enabled || settings.gameMode) return;
   mediaProc = spawn(unpacked('bin', 'MediaHelper.exe'), [String(process.pid)], { windowsHide: true });
   readline.createInterface({ input: mediaProc.stdout }).on('line', (line) => {
     let msg; try { msg = JSON.parse(line); } catch { return; }
@@ -117,7 +118,7 @@ function startMedia() {
   const proc = mediaProc;
   proc.on('exit', () => {
     if (mediaProc === proc) mediaProc = null;
-    if (!app.isQuitting && settings.enabled) setTimeout(startMedia, 2000);
+    if (!app.isQuitting && settings.enabled && !settings.gameMode) setTimeout(startMedia, 2000);
   });
 }
 function stopMedia() {
@@ -162,21 +163,47 @@ function setEnabled(on) {
   updateTray();
 }
 
+// ---------- Modo jogo ----------
+// Deixa o app praticamente parado: fecha a janela da ilha (libera a memória da interface),
+// encerra o auxiliar (.NET), para de observar downloads e de checar o mouse.
+// Fica só o ícone na bandeja para voltar.
+function setGameMode(on) {
+  if (settings.gameMode === on) return;
+  settings.gameMode = on; saveSettings();
+  if (on) {
+    stopMedia();
+    unwatchDownloads();
+    clearInterval(dlTimer); dlTimer = null;
+    if (win && !win.isDestroyed()) win.destroy();
+    win = null; winBounds = null; inside = false;
+    // devolve a memória para o Windows
+    if (global.gc) global.gc();
+  } else {
+    createWindow();
+    watchDownloads();
+    startMedia();
+  }
+  updateTray();
+}
+ipcMain.on('game-mode', () => setGameMode(true));
+
 // ---------- Ícone na bandeja ----------
 let tray = null;
-const trayIcon = (on) => nativeImage.createFromPath(path.join(__dirname, 'assets', on ? 'tray.png' : 'tray-off.png'));
+const trayIcon = () => nativeImage.createFromPath(path.join(__dirname, 'assets',
+  settings.gameMode ? 'tray-game.png' : settings.enabled ? 'tray.png' : 'tray-off.png'));
 function updateTray() {
   if (!tray) return;
-  tray.setImage(trayIcon(settings.enabled));
-  tray.setToolTip(settings.enabled ? 'Island — ativa' : 'Island — desativada');
+  tray.setImage(trayIcon());
+  tray.setToolTip(settings.gameMode ? 'Island — modo jogo (clique para sair)' : settings.enabled ? 'Island — ativa' : 'Island — desativada');
 }
 function createTray() {
-  tray = new Tray(trayIcon(settings.enabled));
+  tray = new Tray(trayIcon());
   updateTray();
   // clique: liga se estiver desligada; se já estiver ligada, abre a ilha
   tray.on('click', () => {
+    if (settings.gameMode) return setGameMode(false);   // sai do modo jogo
     if (!settings.enabled) setEnabled(true);
-    else if (!hiddenByFullscreen) win.webContents.send('open-island');
+    else if (!hiddenByFullscreen && win && !win.isDestroyed()) win.webContents.send('open-island');
   });
   tray.on('right-click', () => tray.popUpContextMenu(buildMenu()));
 }
@@ -187,7 +214,7 @@ function ps(file, args = []) {
     { windowsHide: true });
 }
 
-function create() {
+function createWindow() {
   win = new BrowserWindow({
     ...targetBounds(),
     frame: false, transparent: true, resizable: false, movable: false,
@@ -206,15 +233,27 @@ function create() {
       orig(ch, ...a);
     };
   }
-  createTray();
   win.loadFile('index.html');
   win.webContents.on('did-finish-load', () => { sendShelf(); sendClips(); sendDlRecent(); applyLayout(); dlScan(); });
-  watchDownloads();
+}
+
+function create() {
+  createTray();
   // monitor desconectado ou resolução mudou: reposiciona
   screen.on('display-removed', () => applyLayout());
   screen.on('display-metrics-changed', () => applyLayout());
+  if (settings.gameMode) return; // abriu já em modo jogo: só a bandeja
+  createWindow();
+  watchDownloads();
   startMedia();
 }
+// sem janela (modo jogo) o app continua vivo na bandeja
+app.on('window-all-closed', () => {});
+// teste automático (ISLAND_TEST_GAME=1): entra no modo jogo aos 8 s e sai aos 40 s
+if (process.env.ISLAND_TEST_GAME) app.whenReady().then(() => {
+  setTimeout(() => { console.log('[teste] modo jogo ON'); setGameMode(true); }, 8000);
+  setTimeout(() => { console.log('[teste] modo jogo OFF'); setGameMode(false); }, 40000);
+});
 
 // ---------- Mouse: checa a posição do cursor (o "forward" de eventos não é confiável no Windows) ----------
 let rect = { x: 0, y: 0, w: 0, h: 0 }, inside = false;
@@ -224,7 +263,7 @@ ipcMain.on('rect', (_e, r) => { rect = r; });
 let winBounds = null;
 const refreshBounds = () => { if (win && !win.isDestroyed()) winBounds = win.getBounds(); };
 function pollMouse() {
-  let next = 250;
+  let next = settings.gameMode || !settings.enabled ? 2000 : 250;
   if (win && !win.isDestroyed() && !hiddenByFullscreen && !drag && settings.enabled) {
     if (!winBounds || animT) refreshBounds();
     const p = screen.getCursorScreenPoint(), b = winBounds, pad = Math.min(rect.w, rect.h) > 40 ? 14 : 4;
@@ -249,7 +288,7 @@ ipcMain.on('media-cmd', (_e, action) => {
   const ok = /^(toggle|next|prev)\t[^\t\r\n]*$/.test(action) || /^seek\t[^\t\r\n]*\t\d+(\.\d+)?$/.test(action);
   if (mediaProc && ok) mediaProc.stdin.write(action + '\n');
 });
-ipcMain.on('menu', () => buildMenu().popup({ window: win }));
+ipcMain.on('menu', () => { if (win && !win.isDestroyed()) buildMenu().popup({ window: win }); });
 
 // mesmo menu na bandeja e no botão direito da ilha
 function buildMenu() {
@@ -259,7 +298,14 @@ function buildMenu() {
     checked: settings.edge === edge && (p === undefined || Math.abs(settings.pos - p) < 0.01),
     click: () => setEdge(edge, p ?? settings.pos),
   });
+  if (settings.gameMode) return Menu.buildFromTemplate([
+    { label: '🎮 Modo jogo ativo', enabled: false },
+    { label: 'Desativar modo jogo', click: () => setGameMode(false) },
+    { type: 'separator' },
+    { label: 'Sair do Island', click: () => app.quit() },
+  ]);
   return Menu.buildFromTemplate([
+    { label: '🎮 Ativar modo jogo', click: () => setGameMode(true) },
     settings.enabled
       ? { label: 'Desativar ilha', click: () => setEnabled(false) }
       : { label: 'Ativar ilha', click: () => setEnabled(true) },
@@ -535,8 +581,9 @@ function dlScan() {
 }
 
 const dlWatchers = [];
+function unwatchDownloads() { dlWatchers.splice(0).forEach((w) => { try { w.close(); } catch {} }); }
 function watchDownloads() {
-  dlWatchers.splice(0).forEach((w) => { try { w.close(); } catch {} });
+  unwatchDownloads();
   dlDirs = browserDownloadDirs();
   for (const dir of dlDirs) {
     try {
@@ -550,6 +597,7 @@ function watchDownloads() {
 }
 // se você mudar a pasta de download de algum navegador, a ilha percebe (checa a cada 10 min)
 setInterval(() => {
+  if (settings.gameMode) return;
   const now = browserDownloadDirs();
   if (now.join('|') !== dlDirs.join('|')) watchDownloads();
 }, 10 * 60e3);
