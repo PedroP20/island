@@ -1,0 +1,50 @@
+{
+  "name": "island",
+  "version": "1.0.0",
+  "description": "Dynamic Island para Windows",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "productName": "Island",
+  "author": "Island",
+  "build": {
+    "appId": "com.island.app",
+    "productName": "Island",
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "assets/**",
+      "scripts/**",
+      "bin/**",
+      "!bin/*.pdb"
+    ],
+    "asarUnpack": [
+      "bin/**",
+      "scripts/**"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Island",
+      "runAfterFinish": true,
+      "artifactName": "Island-Setup-${version}.${ext}"
+    }
+  }
+}
