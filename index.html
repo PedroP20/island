@@ -58,6 +58,17 @@
   body.vertical #bubble .it { flex-direction: column; }
   #bubble .it { display: flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; animation: pop .45s var(--spring); }
   .pdot { width: 7px; height: 7px; border-radius: 50%; }
+  /* ícone de download com anel de progresso */
+  .dlring { position: relative; width: 20px; height: 20px; display: grid; place-items: center; color: var(--blue); flex: none; }
+  .dlring .ring { position: absolute; inset: 0; }
+  .dlring .arr { width: 11px; height: 11px; }
+  .dlbar { width: 100%; height: 3px; border-radius: 2px; background: var(--track); overflow: hidden; }
+  .dlbar div { height: 100%; width: 100%; background: var(--blue); transform-origin: left; transform: scaleX(0); transition: transform 1s linear; }
+  .file.active { cursor: default; }
+  .file .fbtn { position: absolute; top: 0; left: 3px; width: 16px; height: 16px; padding: 0; background: var(--track); opacity: 0; color: var(--fg); }
+  .file .fbtn svg { width: 10px; height: 10px; }
+  .file:hover .fbtn { opacity: 1; }
+  .file .sub { font-size: 9.5px; color: var(--muted); }
 
   /* ===== conteúdos ===== */
   .view { position: absolute; inset: 0; opacity: 0; filter: blur(8px); transform: scale(.9);
@@ -257,6 +268,7 @@
   <symbol id="i-timer" viewBox="0 0 24 24"><path d="M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.96 8.96 0 0 0 12 4a9 9 0 1 0 9 9c0-2.12-.74-4.07-1.97-5.61zM12 20a7 7 0 1 1 0-14 7 7 0 0 1 0 14z"/></symbol>
   <symbol id="i-tray" viewBox="0 0 24 24"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 12h-4a3 3 0 0 1-6 0H5V5h14v10z"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><path d="M19.14 12.94a7.07 7.07 0 0 0 0-1.88l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.03 7.03 0 0 0-1.62-.94l-.36-2.54A.5.5 0 0 0 13.9 2.5h-3.84a.5.5 0 0 0-.49.42l-.36 2.54c-.59.24-1.130.56-1.62.94l-2.39-.96a.5.5 0 0 0-.61.22L2.67 8.98a.5.5 0 0 0 .12.64l2.03 1.58a7.07 7.07 0 0 0 0 1.88l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.61.22l2.39-.96c.49.38 1.03.7 1.62.94l.36 2.54c.05.24.25.42.49.42h3.84c.24 0 .44-.18.49-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.48 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12.3 2a10 10 0 1 0 9.7 12.4A8 8 0 0 1 12.3 2z"/></symbol>
   <symbol id="i-down" viewBox="0 0 24 24"><path d="M11 4h2v10.2l3.6-3.6L18 12l-6 6-6-6 1.4-1.4 3.6 3.6z"/><path d="M5 19h14v2H5z"/></symbol>
   <symbol id="i-vol" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.47 4.47 0 0 0 2.5-4zM14 3.23v2.06a7 7 0 0 1 0 13.42v2.06A9 9 0 0 0 14 3.23z"/></symbol>
@@ -280,7 +292,7 @@
       <span class="val" style="color:var(--purple)" data-focus></span>
     </div>
     <div class="view compact" id="vDownload">
-      <span class="ico" style="color:var(--blue)"><svg width="16" height="16"><use href="#i-down"/></svg></span>
+      <span class="dlring"><svg class="ring" width="20" height="20" viewBox="0 0 20 20"><circle class="bg" cx="10" cy="10" r="8"/><circle class="fg" cx="10" cy="10" r="8" stroke="var(--blue)" stroke-dasharray="50.27" stroke-dashoffset="50.27" transform="rotate(-90 10 10)" data-dlring/></svg><svg class="arr"><use href="#i-down"/></svg></span>
       <span class="val" style="color:var(--blue)" data-dl></span>
     </div>
     <div class="view compact" id="vShelfC">
@@ -346,11 +358,12 @@
 
     <div class="view" id="vShelf">
       <div class="head">
-        <div class="seg" id="sSeg"><button data-m="files">Arquivos</button><button data-m="clips">Copiados</button></div>
+        <div class="seg" id="sSeg"><button data-m="files">Arquivos</button><button data-m="clips">Copiados</button><button data-m="dls">Downloads</button></div>
         <div class="chips" id="sBtns"></div>
       </div>
       <div class="strip" id="files"></div>
       <div class="strip" id="clips" style="display:none"></div>
+      <div class="strip" id="dls" style="display:none"></div>
     </div>
 
     <div class="view" id="vStyle">
@@ -564,13 +577,13 @@ function paintBubble() {
     bubble.innerHTML = items.map((k) => {
       if (k === 'timer') return `<span class="it" data-go="vTimerBig" data-mode="timer" title="Timer">${ring('var(--orange)', 'data-ring')}</span>`;
       if (k === 'focus') return `<span class="it" data-go="vTimerBig" data-mode="focus" title="Foco">${ring('var(--purple)', 'data-fring')}</span>`;
-      if (k === 'download') return `<span class="it" style="color:var(--blue)" title="Baixando"><svg width="15" height="15"><use href="#i-down"/></svg></span>`;
+      if (k === 'download') return `<span class="it dlring" data-go="vShelf" data-smode="dls" title="Baixando">${ring('var(--blue)', 'data-dlring stroke-dashoffset="50.27"')}<svg class="arr"><use href="#i-down"/></svg></span>`;
       if (k === 'shelf') return `<span class="it" data-go="vShelf" title="Prateleira" style="color:var(--blue)"><svg width="14" height="14"><use href="#i-tray"/></svg><span data-shelfcount></span></span>`;
       const t = [state.priv.mic.length ? 'Microfone: ' + state.priv.mic.join(', ') : '', state.priv.cam.length ? 'Câmera: ' + state.priv.cam.join(', ') : ''].filter(Boolean).join('\n');
       return `<span class="it" title="${esc(t)}" style="gap:4px">${state.priv.cam.length ? '<i class="pdot" style="background:var(--green)"></i>' : ''}${state.priv.mic.length ? '<i class="pdot" style="background:var(--orange)"></i>' : ''}</span>`;
     }).join('');
     bubbleKey = key;
-    paintCounts(); paintRings();
+    paintCounts(); paintRings(); paintDownload();
   }
   const [w, h] = sizeOf(current) || [126, 34];
   const [x, y] = placeFor(w, h);
@@ -585,6 +598,7 @@ function paintBubble() {
 bubble.addEventListener('click', (e) => {
   const go = e.target.closest('[data-go]'); if (!go) return;
   if (go.dataset.mode) state.timerMode = go.dataset.mode;
+  if (go.dataset.smode) { state.shelfMode = go.dataset.smode; paintShelf(); }
   state.page = go.dataset.go; state.hover = true; buildTimer(); render();
 });
 
@@ -654,6 +668,7 @@ api.onHover((v) => {
 island.addEventListener('click', () => {
   if (justDragged) return;
   if (state.notif) { dismissNotif(); return; }
+  if (current === 'vDownload') { state.page = 'vShelf'; state.shelfMode = 'dls'; paintShelf(); }
   clearTimeout(enterT); if (!state.hover) { state.hover = true; render(); }
 });
 island.addEventListener('contextmenu', (e) => { e.preventDefault(); api.menu(); });
@@ -878,16 +893,18 @@ function paintShelf() {
   const files = state.shelfMode === 'files';
   $$('#sSeg button').forEach((b) => {
     b.classList.toggle('on', b.dataset.m === state.shelfMode);
-    const n = b.dataset.m === 'files' ? state.shelf.length : state.clips.length;
-    setText(b, (b.dataset.m === 'files' ? 'Arquivos' : 'Copiados') + (n ? ` · ${n}` : ''));
   });
-  $('#files').style.display = files ? '' : 'none';
-  $('#clips').style.display = files ? 'none' : '';
+  const mode = state.shelfMode;
+  $('#files').style.display = mode === 'files' ? '' : 'none';
+  $('#clips').style.display = mode === 'clips' ? '' : 'none';
+  $('#dls').style.display = mode === 'dls' ? '' : 'none';
+  if (mode === 'dls') { dlStripKey = ''; paintDlStrip(); }
   paintCounts();
   const btns = $('#sBtns'); btns.innerHTML = '';
   if (files && state.shelf.length) {
     btns.append(chip('Copiar', 'sm', () => { api.shelfCopy(); toast('📋 Copiado', 'Ctrl+V numa pasta'); }), chip('Limpar', 'sm r', () => api.shelfClear()));
-  } else if (!files && state.clips.length) btns.append(chip('Limpar', 'sm r', () => api.clipClear()));
+  } else if (mode === 'clips' && state.clips.length) btns.append(chip('Limpar', 'sm r', () => api.clipClear()));
+  else if (mode === 'dls' && (state.dlRecent || []).length) btns.append(chip('Limpar lista', 'sm r', () => api.dlClear()));
 
   const box = $('#files');
   box.classList.toggle('empty', !state.shelf.length);
@@ -953,6 +970,7 @@ document.addEventListener('drop', (e) => {
 // ================= downloads =================
 api.onDownload((d) => {
   if (d.active) { const had = state.downloads.length; state.downloads = d.active; if (!!had !== !!d.active.length) render(); paintDownload(); }
+  if (d.done) dlStripKey = '';
   if (d.done) {
     showAlert(`<span style="color:var(--blue);display:flex"><svg width="16" height="16"><use href="#i-down"/></svg></span><span class="ell">${esc(d.done.name)}</span>`, '', 6000, false, [
       ['Mostrar', () => api.dlShow(d.done.path)],
@@ -960,11 +978,60 @@ api.onDownload((d) => {
     ]);
   }
 });
+const dlPct = (x) => (x.total > 0 ? Math.min(100, Math.floor((x.size / x.total) * 100)) : null);
 function paintDownload() {
-  const d = state.downloads; if (!d.length) return;
-  const total = d.reduce((a, x) => a + x.size, 0), speed = d.reduce((a, x) => a + x.speed, 0);
-  $$('[data-dl]').forEach((e) => setText(e, vertical() ? fmtSize(total).split(' ')[0] : (d.length > 1 ? `${d.length} · ` : '') + fmtSize(total)));
-  island.title = d.map((x) => x.name).join('\n') + (speed > 0 ? `\n${fmtSize(speed)}/s` : '');
+  const d = state.downloads;
+  if (state.shelfMode === 'dls') paintDlStrip();
+  if (!d.length) return;
+  const size = d.reduce((a, x) => a + x.size, 0), speed = d.reduce((a, x) => a + x.speed, 0);
+  // porcentagem geral (quando o navegador informou o tamanho total)
+  const known = d.filter((x) => x.total > 0);
+  const pct = known.length === d.length ? Math.min(100, Math.floor(size / known.reduce((a, x) => a + x.total, 0) * 100)) : null;
+  const txt = pct !== null ? `${pct}%` : vertical() ? fmtSize(size).split(' ')[0] : fmtSize(size);
+  $$('[data-dl]').forEach((e) => setText(e, (d.length > 1 && !vertical() ? `${d.length} · ` : '') + txt));
+  // anel: enche conforme o progresso; sem total conhecido, fica um arco discreto
+  $$('[data-dlring]').forEach((r) => (r.style.strokeDashoffset = (50.27 * (1 - (pct !== null ? pct / 100 : 0.12))).toFixed(2)));
+  island.title = d.map((x) => x.name + (x.total ? ` — ${fmtSize(x.size)} de ${fmtSize(x.total)}` : '')).join('\n') + (speed > 0 ? `\n${fmtSize(speed)}/s` : '');
+}
+
+// aba Downloads: baixando agora (com barra) + recentes (arrastar, abrir, mostrar na pasta)
+api.onDlRecent((items) => { state.dlRecent = items; if (state.shelfMode === 'dls') paintShelf(); });
+let dlStripKey = '';
+function paintDlStrip() {
+  const box = $('#dls'), act = state.downloads, rec = state.dlRecent || [];
+  const key = act.map((x) => x.name).join('|') + '#' + rec.map((x) => x.path).join('|');
+  if (key !== dlStripKey) {
+    dlStripKey = key;
+    box.classList.toggle('empty', !act.length && !rec.length);
+    if (!act.length && !rec.length) { box.textContent = 'Seus downloads aparecem aqui'; return; }
+    box.innerHTML = '';
+    act.forEach((x, i) => {
+      const el = document.createElement('div'); el.className = 'file active'; el.title = x.name;
+      el.innerHTML = `<span class="dlring" style="width:36px;height:36px">${ring('var(--blue)', `data-dlrow="${i}"`).replace(/width="20" height="20"/, 'width="36" height="36"')}<svg class="arr" style="width:16px;height:16px"><use href="#i-down"/></svg></span>
+        <span class="name ell"></span><span class="sub" data-dlsub="${i}"></span>`;
+      el.querySelector('.name').textContent = x.name;
+      box.append(el);
+    });
+    rec.forEach((f) => {
+      const el = document.createElement('div');
+      el.className = 'file' + (f.isImage ? ' image' : ''); el.draggable = true;
+      el.title = f.path + '\n\nArraste para soltar · duplo clique para abrir';
+      el.innerHTML = `<img src="${f.thumb}"><span class="name ell"></span>
+        <button class="fbtn" title="Mostrar na pasta"><svg><use href="#i-folder"/></svg></button><button class="x" title="Tirar da lista">✕</button>`;
+      el.querySelector('.name').textContent = f.name;
+      el.ondragstart = (e) => { e.preventDefault(); api.dlDrag(f.path); };
+      el.ondblclick = () => api.dlOpen(f.path);
+      el.querySelector('.fbtn').onclick = (e) => { e.stopPropagation(); api.dlShow(f.path); };
+      el.querySelector('.x').onclick = (e) => { e.stopPropagation(); api.dlRemove(f.path); };
+      box.append(el);
+    });
+  }
+  // só os números mudam a cada segundo
+  act.forEach((x, i) => {
+    const p = dlPct(x), r = box.querySelector(`[data-dlrow="${i}"]`);
+    if (r) r.style.strokeDashoffset = (50.27 * (1 - (p !== null ? p / 100 : 0.12))).toFixed(2);
+    setText(box.querySelector(`[data-dlsub="${i}"]`), p !== null ? `${p}%` : fmtSize(x.size));
+  });
 }
 
 // ================= volume, brilho, mic/câmera, notificações =================

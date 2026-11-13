@@ -31,6 +31,13 @@ _ = Task.Run(async () =>
     string line;
     while ((line = Console.ReadLine()) != null)
     {
+        // tamanho total de um download: "dltotal\t<temporário>\t<final>\t<History1>|<History2>..."
+        if (line.StartsWith("dltotal\t"))
+        {
+            var a = line.Split('\t');
+            if (a.Length >= 4) _ = Task.Run(() => DownloadTotal(a[1], a[2], a[3].Split('|')));
+            continue;
+        }
         try
         {
             var s = mgr.GetCurrentSession();
@@ -100,6 +107,34 @@ _ = Task.Run(async () =>
         await Task.Delay(500);
     }
 });
+
+// Lê o tamanho total no histórico do navegador (Chrome/Brave/Edge/Opera/Vivaldi).
+// Copia o banco (o navegador mantém ele aberto) e consulta uma linha. 1x por download.
+void DownloadTotal(string temp, string final, string[] histories)
+{
+    long total = 0;
+    foreach (var h in histories)
+    {
+        if (total > 0 || !File.Exists(h)) continue;
+        var tmp = Path.Combine(Path.GetTempPath(), $"island-hist-{Guid.NewGuid():N}.db");
+        try
+        {
+            using (var i = new FileStream(h, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            using (var o = File.Create(tmp)) i.CopyTo(o);
+            using var c = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={tmp};Mode=ReadOnly;Pooling=False");
+            c.Open();
+            var cmd = c.CreateCommand();
+            cmd.CommandText = "SELECT total_bytes FROM downloads WHERE current_path = $t OR target_path = $f OR target_path = $t ORDER BY id DESC LIMIT 1";
+            cmd.Parameters.AddWithValue("$t", temp);
+            cmd.Parameters.AddWithValue("$f", final);
+            var v = cmd.ExecuteScalar();
+            if (v is long l) total = l;
+        }
+        catch { }
+        finally { try { File.Delete(tmp); } catch { } }
+    }
+    Emit(new() { ["t"] = "dltotal", ["path"] = temp, ["total"] = total });
+}
 
 // apps usando microfone/câmera agora (registro do Windows: LastUsedTimeStop == 0)
 List<string> InUse(string cap)

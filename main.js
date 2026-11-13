@@ -110,6 +110,7 @@ function startMedia() {
     if (!win || win.isDestroyed()) return;
     if ('fullscreen' in msg) { fsInfo = msg; return evaluateFullscreen(); }
     if (msg.t === 'clip') return onClipboardChanged();
+    if (msg.t === 'dltotal') return onDlTotal(msg);
     if (msg.t) return win.webContents.send('sys', msg); // volume, brilho, mic/câmera, notificações
     win.webContents.send('media', msg);
   });
@@ -198,7 +199,7 @@ function create() {
   win.setIgnoreMouseEvents(true);
   createTray();
   win.loadFile('index.html');
-  win.webContents.on('did-finish-load', () => { sendShelf(); sendClips(); applyLayout(); dlScan(); });
+  win.webContents.on('did-finish-load', () => { sendShelf(); sendClips(); sendDlRecent(); applyLayout(); dlScan(); });
   watchDownloads();
   // monitor desconectado ou resolução mudou: reposiciona
   screen.on('display-removed', () => applyLayout());
@@ -383,9 +384,41 @@ const UNCONFIRMED = /^(Unconfirmed|Não confirmado) \d+$/i; // nome provisório 
 let dlActive = new Map(), dlTimer = null, dlScanT = null, dlDirs = [];
 const dlPending = new Map();   // temporário visto -> quando (pega downloads que terminam rápido demais)
 const dlAnnounced = new Set();
+const dlTotals = new Map();     // temporário -> { total, tries, asked }
+let chromiumHistories = [];     // bancos "History" dos navegadores (para saber o tamanho total)
+
+// downloads recentes (aba Downloads da prateleira), salvos entre sessões
+const dlRecentFile = () => path.join(app.getPath('userData'), 'downloads.json');
+let dlRecent = [];
+try { dlRecent = JSON.parse(fs.readFileSync(dlRecentFile(), 'utf8')); } catch {}
+async function sendDlRecent() {
+  dlRecent = dlRecent.filter((x) => fs.existsSync(x.path)).slice(0, 15);
+  try { fs.writeFileSync(dlRecentFile(), JSON.stringify(dlRecent)); } catch {}
+  const items = await Promise.all(dlRecent.map(async (x) => ({ ...x, thumb: await thumbFor(x.path),
+    isImage: /\.(png|jpe?g|gif|webp|bmp|heic)$/i.test(x.path) })));
+  win && !win.isDestroyed() && win.webContents.send('dlrecent', items);
+}
+ipcMain.on('dl-open', (_e, p) => { if (dlRecent.some((x) => x.path === p)) shell.openPath(p); });
+ipcMain.on('dl-remove', (_e, p) => { dlRecent = dlRecent.filter((x) => x.path !== p); sendDlRecent(); });
+ipcMain.on('dl-clear', () => { dlRecent = []; sendDlRecent(); });
+ipcMain.on('dl-drag', async (e, p) => {
+  if (!dlRecent.some((x) => x.path === p) || !fs.existsSync(p)) return;
+  e.sender.startDrag({ file: p, icon: await iconFor(p) });
+});
+function askTotal(full) {
+  const t = dlTotals.get(full) || { total: 0, tries: 0, asked: 0 };
+  if (t.total || t.tries >= 6 || Date.now() - t.asked < 3000 || !mediaProc || !chromiumHistories.length) return;
+  t.tries++; t.asked = Date.now(); dlTotals.set(full, t);
+  mediaProc.stdin.write(['dltotal', full, full.replace(DL_EXT, ''), chromiumHistories.join('|')].join('\t') + '\n');
+}
+function onDlTotal(msg) {
+  const t = dlTotals.get(msg.path); if (!t) return;
+  if (msg.total > 0) { t.total = msg.total; dlScan(); }
+}
 
 function browserDownloadDirs() {
   const dirs = new Set([app.getPath('downloads')]);
+  const hist = [];
   const local = process.env.LOCALAPPDATA || '', roaming = process.env.APPDATA || '';
   const chromium = [
     path.join(local, 'BraveSoftware', 'Brave-Browser', 'User Data'),
@@ -404,6 +437,7 @@ function browserDownloadDirs() {
         const j = JSON.parse(fs.readFileSync(path.join(p, 'Preferences'), 'utf8'));
         const d = j?.download?.default_directory;
         if (d) dirs.add(d);
+        if (fs.existsSync(path.join(p, 'History'))) hist.push(path.join(p, 'History'));
       } catch {}
     }
   }
@@ -418,6 +452,7 @@ function browserDownloadDirs() {
       } catch {}
     }
   } catch {}
+  chromiumHistories = [...new Set(hist)];
   return [...dirs].filter((d) => { try { return fs.statSync(d).isDirectory(); } catch { return false; } });
 }
 
@@ -425,6 +460,8 @@ function announceDone(final) {
   if (process.env.ISLAND_DEBUG) console.log('[dl] concluido:', final);
   if (dlAnnounced.has(final)) return;
   dlAnnounced.add(final); setTimeout(() => dlAnnounced.delete(final), 60e3);
+  dlRecent = [{ path: final, name: path.basename(final), at: Date.now() }, ...dlRecent.filter((x) => x.path !== final)];
+  sendDlRecent();
   win?.webContents.send('download', { done: { name: path.basename(final), path: final } });
 }
 
@@ -443,12 +480,13 @@ function dlScan() {
       const speed = prev ? Math.max(0, (size - prev.size) / ((now - prev.t) / 1000)) : 0;
       active.set(full, { size, t: now, speed: prev && now - prev.t < 400 ? prev.speed : speed, name: n });
       dlPending.set(full, now);
+      askTotal(full);
     }
   }
   // terminou: o temporário sumiu e o arquivo final existe
   for (const [full, when] of dlPending) {
     if (active.has(full)) continue;
-    dlPending.delete(full);
+    dlPending.delete(full); dlTotals.delete(full);
     if (now - when > 5 * 60e3) continue;
     const final = full.replace(DL_EXT, '');
     if (!UNCONFIRMED.test(path.basename(final)) && fs.existsSync(final)) announceDone(final);
@@ -466,8 +504,9 @@ function dlScan() {
   }
   dlActive = active;
   if (process.env.ISLAND_DEBUG && active.size) console.log('[dl] baixando:', [...active.values()].map((v) => v.name + ' ' + v.size));
-  win?.webContents.send('download', { active: [...active.values()].map((v) => ({
-    name: v.name.replace(DL_EXT, '').replace(UNCONFIRMED, 'Download'), size: v.size, speed: v.speed })) });
+  win?.webContents.send('download', { active: [...active].map(([full, v]) => ({
+    name: v.name.replace(DL_EXT, '').replace(UNCONFIRMED, 'Download'), size: v.size, speed: v.speed,
+    total: dlTotals.get(full)?.total || 0 })) });
   if (active.size && !dlTimer) dlTimer = setInterval(dlScan, 1000);
   if (!active.size && dlTimer) { clearInterval(dlTimer); dlTimer = null; }
 }
