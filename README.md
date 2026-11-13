@@ -132,3 +132,9 @@ npm run dist
 | `index.html` | toda a interface e as animações |
 | `preload.js` | ponte segura entre a interface e o sistema |
 | `helper/Program.cs` | módulo .NET: mídia, volume, brilho, notificações, mic/câmera, tela cheia |
+
+---
+
+## 📄 Licença
+
+[MIT](LICENSE): use, modifique e compartilhe à vontade, mantendo o crédito.
