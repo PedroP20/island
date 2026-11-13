@@ -77,9 +77,11 @@ _ = Task.Run(async () =>
             bool fs = false; int[] mon = null;
             Safe(() =>
             {
-                if (SHQueryUserNotificationState(out int st) == 0 && (st == 2 || st == 3 || st == 4)) fs = true;
                 var h = GetForegroundWindow();
-                if (h == IntPtr.Zero) return;
+                // jogo minimizado ou jogado para fora da tela (alt+tab) ainda deixa o Windows dizendo "tela cheia": ignora
+                if (h == IntPtr.Zero || IsIconic(h) || MonitorFromWindow(h, 0) == IntPtr.Zero) return;
+                // (o aviso "jogo em tela cheia" do Windows vale para o sistema todo, mesmo com o jogo em
+                // segundo plano; por isso a regra é: a janela da FRENTE cobre o monitor inteiro)
                 var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
                 if (!GetMonitorInfo(MonitorFromWindow(h, 2), ref mi)) return;
                 var monArr = new[] { mi.rcMonitor.Left, mi.rcMonitor.Top, mi.rcMonitor.Right, mi.rcMonitor.Bottom };
@@ -246,6 +248,7 @@ _ = Task.Run(async () =>
 // Cada sessão ganha um id estável (app + nº de ordem). A capa vai em mensagem separada, só quando muda.
 var artState = new Dictionary<string, (string key, bool have, int tries)>();
 string prevList = "";
+var lastPos = new Dictionary<string, (double pos, long upd)>();
 string SessionId(GlobalSystemMediaTransportControlsSession s, Dictionary<string, int> seen)
 {
     var app = s.SourceAppUserModelId ?? "app";
@@ -258,8 +261,32 @@ GlobalSystemMediaTransportControlsSession FindSession(string id)
     foreach (var s in mgr.GetSessions()) if (SessionId(s, seen) == id) return s;
     return null;
 }
+// Por evento: o Windows avisa quando algo muda (música nova, play/pause, pulo, app abriu/fechou).
+// Só então a lista é relida. Uma checagem de segurança roda a cada 5 s.
+var dirty = true;
+var hooked = new HashSet<GlobalSystemMediaTransportControlsSession>();
+void HookSessions()
+{
+    foreach (var s in mgr.GetSessions())
+    {
+        if (!hooked.Add(s)) continue;
+        s.MediaPropertiesChanged += (_, _) => dirty = true;
+        s.PlaybackInfoChanged += (_, _) => dirty = true;
+        s.TimelinePropertiesChanged += (_, _) => dirty = true;
+    }
+}
+mgr.SessionsChanged += (_, _) => { dirty = true; };
+mgr.CurrentSessionChanged += (_, _) => { dirty = true; };
+HookSessions();
+var lastRefresh = DateTime.MinValue;
 while (true)
 {
+    var since = (DateTime.Now - lastRefresh).TotalMilliseconds;
+    // capa ainda chegando (Spotify) = tenta de novo a cada 1 s; senão, só com evento ou a cada 5 s
+    var waitingArt = artState.Values.Any((a) => !a.have && a.tries < 20);
+    if (!(dirty && since >= 700) && !(waitingArt && since >= 1000) && since < 5000) { await Task.Delay(250); continue; }
+    dirty = false; lastRefresh = DateTime.Now;
+    try { HookSessions(); } catch { }
     var list = new List<Dictionary<string, object>>();
     try
     {
@@ -314,14 +341,36 @@ while (true)
         foreach (var gone in artState.Keys.Where((k) => !list.Any((x) => (string)x["id"] == k)).ToList()) artState.Remove(gone);
     }
     catch { }
-    var msg = new Dictionary<string, object> { ["t"] = "sessions", ["list"] = list };
-    var json = JsonSerializer.Serialize(msg);
-    if (json != prevList) { prevList = json; Emit(msg); }
-    await Task.Delay(1000);
+    // Só envia se algo mudou de verdade. A posição avança sozinha na interface, então
+    // atualizações de posição "normais" (sem pulo) não precisam ser enviadas.
+    var stable = JsonSerializer.Serialize(list.Select((x) => x.Where((kv) => kv.Key != "position" && kv.Key != "updated")
+        .ToDictionary((kv) => kv.Key, (kv) => kv.Value)));
+    bool jumped = false;
+    foreach (var x in list)
+    {
+        var id = (string)x["id"]; var pos = (double)x["position"]; var upd = (long)x["updated"];
+        var playing = (bool)x["playing"];
+        if (lastPos.TryGetValue(id, out var lp))
+        {
+            var expected = lp.pos + (playing ? (upd - lp.upd) / 1000.0 : 0);
+            if (Math.Abs(pos - expected) > 2.5) jumped = true;
+        }
+        else jumped = true;
+    }
+    if (stable != prevList || jumped)
+    {
+        prevList = stable;
+        lastPos.Clear();
+        foreach (var x in list) lastPos[(string)x["id"]] = ((double)x["position"], (long)x["updated"]);
+        Emit(new Dictionary<string, object> { ["t"] = "sessions", ["list"] = list });
+    }
+    // sessões que fecharam saem da lista de eventos
+    hooked.RemoveWhere((s) => { try { return !mgr.GetSessions().Contains(s); } catch { return true; } });
 }
 
 [DllImport("shell32.dll")] static extern int SHQueryUserNotificationState(out int state);
 [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+[DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
 [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder sb, int n);
 [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
 [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);

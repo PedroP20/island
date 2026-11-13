@@ -224,6 +224,16 @@
   .hours b { color: var(--fg); font-size: 12px; font-weight: 600; }
   .hours span.e { font-size: 15px; }
 
+  /* ===== página: contagem regressiva (temporária) ===== */
+  #vCountdown { padding: 18px 22px 60px; display: flex; flex-direction: column; justify-content: space-between; }
+  .cdHead { display: flex; align-items: baseline; justify-content: space-between; }
+  .cdHead b { font-size: 15px; font-weight: 700; letter-spacing: .3px; }
+  .cdHead span { font-size: 12px; color: var(--muted); }
+  .cdGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .cdCell { background: var(--surface); border-radius: 14px; padding: 10px 0 8px; text-align: center; }
+  .cdCell b { display: block; font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.5px; line-height: 1.05; }
+  .cdCell span { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+
   /* ===== página: timer / foco ===== */
   #vTimerBig { padding: 16px 22px 62px; display: flex; flex-direction: column; gap: 10px; }
   .bigtime { font-size: 38px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -1px; line-height: 1.05; }
@@ -301,6 +311,7 @@
   <symbol id="i-tray" viewBox="0 0 24 24"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 12h-4a3 3 0 0 1-6 0H5V5h14v10z"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><path d="M19.14 12.94a7.07 7.07 0 0 0 0-1.88l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.03 7.03 0 0 0-1.62-.94l-.36-2.54A.5.5 0 0 0 13.9 2.5h-3.84a.5.5 0 0 0-.49.42l-.36 2.54c-.59.24-1.130.56-1.62.94l-2.39-.96a.5.5 0 0 0-.61.22L2.67 8.98a.5.5 0 0 0 .12.64l2.03 1.58a7.07 7.07 0 0 0 0 1.88l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.61.22l2.39-.96c.49.38 1.03.7 1.62.94l.36 2.54c.05.24.25.42.49.42h3.84c.24 0 .44-.18.49-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.48 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></symbol>
   <symbol id="i-folder" viewBox="0 0 24 24"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></symbol>
+  <symbol id="i-hourglass" viewBox="0 0 24 24"><path d="M6 2v6h.01L6 8.01 10 12l-4 4 .01.01H6V22h12v-5.99h-.01L18 16l-4-4 4-3.99-.01-.01H18V2H6zm10 14.5V20H8v-3.5l4-4 4 4zm-4-5-4-4V4h8v3.5l-4 4z"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12.3 2a10 10 0 1 0 9.7 12.4A8 8 0 0 1 12.3 2z"/></symbol>
   <symbol id="i-down" viewBox="0 0 24 24"><path d="M11 4h2v10.2l3.6-3.6L18 12l-6 6-6-6 1.4-1.4 3.6 3.6z"/><path d="M5 19h14v2H5z"/></symbol>
   <symbol id="i-vol" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.47 4.47 0 0 0 2.5-4zM14 3.23v2.06a7 7 0 0 1 0 13.42v2.06A9 9 0 0 0 14 3.23z"/></symbol>
@@ -380,6 +391,16 @@
       <div class="hours" id="hours"></div>
     </div>
 
+    <div class="view" id="vCountdown">
+      <div class="cdHead"><b>GTA VI</b><span>19 de novembro · 00:00</span></div>
+      <div class="cdGrid">
+        <div class="cdCell"><b data-cd="d">0</b><span>dias</span></div>
+        <div class="cdCell"><b data-cd="h">00</b><span>horas</span></div>
+        <div class="cdCell"><b data-cd="m">00</b><span>min</span></div>
+        <div class="cdCell"><b data-cd="s">00</b><span>seg</span></div>
+      </div>
+    </div>
+
     <div class="view" id="vTimerBig">
       <div class="head">
         <div class="seg" id="tSeg"><button data-m="timer">Timer</button><button data-m="focus">Foco</button></div>
@@ -453,12 +474,13 @@ const fmtSize = (b) => b > 1e9 ? (b / 1e9).toFixed(1).replace('.', ',') + ' GB' 
 const SIZES = {
   vIdle: [126, 34, 17], vMedia: [236, 34, 17], vTimer: [200, 34, 17], vFocus: [200, 34, 17], vDownload: [210, 34, 17],
   vShelfC: [170, 34, 17], vAlert: [300, 34, 17], vHud: [250, 34, 17], vNotif: [370, 66, 33],
-  vMediaBig: [400, 230, 44], vClock: [400, 252, 42], vTimerBig: [400, 236, 42], vShelf: [400, 214, 42], vStyle: [400, 276, 42],
+  vMediaBig: [400, 230, 44], vClock: [400, 252, 42], vTimerBig: [400, 236, 42], vCountdown: [400, 200, 42], vShelf: [400, 214, 42], vStyle: [400, 276, 42],
 };
 const SIZES_V = { vIdle: [34, 64, 17], vMedia: [34, 140, 17], vTimer: [34, 96, 17], vFocus: [34, 96, 17], vDownload: [34, 100, 17], vShelfC: [34, 84, 17] };
 const TABS = [
   { id: 'vMediaBig', icon: 'i-music', title: 'Música' },
   { id: 'vClock', icon: 'i-clock', title: 'Relógio e tempo' },
+  { id: 'vCountdown', icon: 'i-hourglass', title: 'Contagem: GTA VI' },
   { id: 'vTimerBig', icon: 'i-timer', title: 'Timer e foco' },
   { id: 'vShelf', icon: 'i-tray', title: 'Prateleira e copiados' },
   { id: 'vStyle', icon: 'i-gear', title: 'Ajustes' },
@@ -519,7 +541,10 @@ $('#cityBtn').addEventListener('click', (e) => { e.stopPropagation(); setCity();
 $('#cityIn').addEventListener('keydown', (e) => { if (e.key === 'Enter') setCity(); });
 
 // ================= o que aparece =================
-const pages = () => TABS.map((t) => t.id).filter((p) => p !== 'vMediaBig' || state.media.active);
+// contagem temporária: some sozinha um dia depois do lançamento
+const CD_TARGET = new Date(2026, 10, 19, 0, 0, 0).getTime(); // 19/11/2026 00:00 (horário local)
+const countdownOn = () => Date.now() < CD_TARGET + 24 * 3600e3;
+const pages = () => TABS.map((t) => t.id).filter((p) => (p !== 'vMediaBig' || state.media.active) && (p !== 'vCountdown' || countdownOn()));
 function primary() {
   if (state.media.active) return 'vMedia';
   if (state.focusEnd) return 'vFocus';
@@ -758,7 +783,7 @@ function animateBars() {
   if (run && !barsT) {
     barsT = setInterval(() => {
       $$(`#${current} .bars i`).forEach((i) => (i.style.transform = `scaleY(${(0.25 + Math.random() * 0.75).toFixed(2)})`));
-    }, 110);
+    }, 150);
   } else if (!run && barsT) {
     clearInterval(barsT); barsT = null;
     $$('.bars i').forEach((i) => (i.style.transform = 'scaleY(.3)'));
@@ -1271,6 +1296,16 @@ function tick() {
     const left = (state.focusEnd - Date.now()) / 1000;
     if (left <= 0) stopFocus(true);
     else $$('[data-focus]').forEach((e) => setText(e, fmt(Math.ceil(left))));
+  }
+  if (current === 'vCountdown') {
+    let left = Math.max(0, Math.floor((CD_TARGET - Date.now()) / 1000));
+    if (left === 0) { setText($('.cdHead span'), 'Já saiu! 🎉'); }
+    const d = Math.floor(left / 86400); left %= 86400;
+    const h = Math.floor(left / 3600); left %= 3600;
+    setText($('[data-cd="d"]'), String(d));
+    setText($('[data-cd="h"]'), String(h).padStart(2, '0'));
+    setText($('[data-cd="m"]'), String(Math.floor(left / 60)).padStart(2, '0'));
+    setText($('[data-cd="s"]'), String(left % 60).padStart(2, '0'));
   }
   if (current === 'vTimerBig') {
     const focus = state.timerMode === 'focus', end = focus ? state.focusEnd : state.timerEnd;

@@ -197,6 +197,15 @@ function create() {
   });
   win.once('ready-to-show', refreshVisibility);
   win.setIgnoreMouseEvents(true);
+  win.on('move', refreshBounds); win.on('resize', refreshBounds);
+  // diagnóstico (ISLAND_DEBUG=1): registra o que é enviado para a interface
+  if (process.env.ISLAND_DEBUG) {
+    const orig = win.webContents.send.bind(win.webContents);
+    win.webContents.send = (ch, ...a) => {
+      if (ch !== 'hover') console.log('[send]', ch, JSON.stringify(a[0] ?? '').replace(/data:image[^"]+/g, '<img>').slice(0, 140));
+      orig(ch, ...a);
+    };
+  }
   createTray();
   win.loadFile('index.html');
   win.webContents.on('did-finish-load', () => { sendShelf(); sendClips(); sendDlRecent(); applyLayout(); dlScan(); });
@@ -210,17 +219,29 @@ function create() {
 // ---------- Mouse: checa a posição do cursor (o "forward" de eventos não é confiável no Windows) ----------
 let rect = { x: 0, y: 0, w: 0, h: 0 }, inside = false;
 ipcMain.on('rect', (_e, r) => { rect = r; });
-setInterval(() => {
-  if (!win || win.isDestroyed() || hiddenByFullscreen || drag || !settings.enabled) return;
-  const p = screen.getCursorScreenPoint(), b = win.getBounds(), pad = Math.min(rect.w, rect.h) > 40 ? 14 : 4;
-  const x = p.x - b.x, y = p.y - b.y;
-  const now = x >= rect.x - pad && x <= rect.x + rect.w + pad && y >= rect.y - pad && y <= rect.y + rect.h + pad;
-  if (now !== inside) {
-    inside = now;
-    win.setIgnoreMouseEvents(!inside);
-    win.webContents.send('hover', inside);
+// Adaptativo: 25x/s com o mouse perto da ilha; ~4x/s quando longe (a maior parte do tempo);
+// parado quando a ilha está escondida ou desligada.
+let winBounds = null;
+const refreshBounds = () => { if (win && !win.isDestroyed()) winBounds = win.getBounds(); };
+function pollMouse() {
+  let next = 250;
+  if (win && !win.isDestroyed() && !hiddenByFullscreen && !drag && settings.enabled) {
+    if (!winBounds || animT) refreshBounds();
+    const p = screen.getCursorScreenPoint(), b = winBounds, pad = Math.min(rect.w, rect.h) > 40 ? 14 : 4;
+    const x = p.x - b.x, y = p.y - b.y;
+    const now = x >= rect.x - pad && x <= rect.x + rect.w + pad && y >= rect.y - pad && y <= rect.y + rect.h + pad;
+    if (now !== inside) {
+      inside = now;
+      win.setIgnoreMouseEvents(!inside);
+      win.webContents.send('hover', inside);
+    }
+    // distância até a área da ilha: perto = checa rápido
+    const dx = Math.max(rect.x - x, 0, x - (rect.x + rect.w)), dy = Math.max(rect.y - y, 0, y - (rect.y + rect.h));
+    next = inside || Math.hypot(dx, dy) < 220 ? 40 : 250;
   }
-}, 50);
+  setTimeout(pollMouse, next);
+}
+pollMouse();
 app.on('browser-window-created', (_e, w) =>
   w.webContents.on('console-message', (_ev, _l, msg) => console.log('[renderer]', msg)));
 ipcMain.on('media-cmd', (_e, action) => {

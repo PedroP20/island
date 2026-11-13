@@ -8,6 +8,8 @@
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
     <TieredPGO>false</TieredPGO>
+    <TieredCompilation>true</TieredCompilation>
+    <AutoreleasePoolSupport>false</AutoreleasePoolSupport>
     <RollForward>Major</RollForward>
     <DebugType>none</DebugType>
     <UseSystemResourceKeys>true</UseSystemResourceKeys>
@@ -17,5 +19,10 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
     <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
     <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- pouca memória: GC devolve RAM ao Windows e compacta mais -->
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="7" />
+    <RuntimeHostConfigurationOption Include="System.GC.RetainVM" Value="false" />
   </ItemGroup>
 </Project>
